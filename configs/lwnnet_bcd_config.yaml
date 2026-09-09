@@ -1,0 +1,496 @@
+# ============================================================
+# LWNNet-BCD
+# Frozen R1 configuration
+# Manuscript:
+# "LWNNet-BCD: An Explainable Lightweight Neural Network for
+# Breast Cancer Detection in 2D Ultrasound Images Using
+# Feature Mapping"
+#
+# This configuration records the principal frozen settings
+# used for the reported R1 experiments.
+# ============================================================
+
+project:
+  name: "LWNNet-BCD"
+  task: "Breast ultrasound multi-task analysis"
+  classes:
+    - "Normal"
+    - "Benign"
+    - "Malignant"
+  num_classes: 3
+  random_seed: 20260830
+
+
+# ------------------------------------------------------------
+# Input
+# ------------------------------------------------------------
+
+input:
+  channels: 3
+  height: 128
+  width: 128
+  color_mode: "RGB"
+
+
+# ------------------------------------------------------------
+# Preprocessing
+# ------------------------------------------------------------
+
+preprocessing:
+  image_resize:
+    size: [128, 128]
+    interpolation: "area"
+
+  mask_resize:
+    size: [128, 128]
+    interpolation: "nearest"
+
+  median_filter:
+    enabled: true
+    kernel_size: 3
+
+  gaussian_filter:
+    enabled: true
+    kernel_size: 3
+    sigma: 0
+
+  normalization:
+    method: "min_max"
+
+  dataset_specific_enhancement: false
+  performance_guided_preprocessing: false
+
+
+# ------------------------------------------------------------
+# Training augmentation
+# ------------------------------------------------------------
+
+augmentation:
+  training_only: true
+
+  horizontal_flip:
+    enabled: true
+    probability: 0.5
+
+  rotation:
+    enabled: true
+    min_degrees: -15
+    max_degrees: 15
+
+  validation_augmentation: false
+  fold_evaluation_augmentation: false
+  final_holdout_augmentation: false
+  external_validation_augmentation: false
+  test_time_augmentation: false
+
+
+# ------------------------------------------------------------
+# Model architecture
+# ------------------------------------------------------------
+
+model:
+  architecture: "LWNNet-BCD"
+
+  encoder:
+    context_channels: 192
+    context_height: 16
+    context_width: 16
+
+  decoder:
+    type: "lightweight_skip_connected"
+    localization_channels: 64
+    output_height: 128
+    output_width: 128
+
+  lesion_head:
+    output_channels: 1
+    activation: "sigmoid"
+
+  boundary_head:
+    output_channels: 1
+    activation: "sigmoid"
+
+  diagnostic_adapter:
+    convolution: "1x1"
+    input_channels: 192
+    output_channels: 96
+    normalization: "GroupNorm"
+    groupnorm_groups: 8
+    activation: "SiLU"
+
+  diagnostic_feature_map:
+    channels: 96
+    height: 16
+    width: 16
+
+  diagnostic_descriptors:
+    global:
+      name: "zG"
+      dimension: 96
+
+    lesion_weighted:
+      name: "zL"
+      dimension: 96
+
+    boundary_weighted:
+      name: "zB"
+      dimension: 96
+
+    concatenated:
+      name: "zcat"
+      dimension: 288
+
+  spatial_weighting:
+    lesion_prediction_source: true
+    boundary_prediction_source: true
+    detach_weighting_maps: true
+    operation: "stop_gradient"
+
+  evidence_gate:
+    input_dimension: 288
+    hidden_dimension: 48
+    output_dimension: 3
+    hidden_activation: "SiLU"
+    output_activation: "softmax"
+
+  fused_descriptor:
+    name: "zF"
+    dimension: 96
+
+  hierarchical_diagnosis:
+    lesion_presence_head: true
+    conditional_malignancy_head: true
+
+    probabilities:
+      normal: "1 - qL"
+      benign: "qL * (1 - qC)"
+      malignant: "qL * qC"
+
+    cancer_score: "P(Malignant)"
+
+  trainable_parameters: 210684
+
+
+# ------------------------------------------------------------
+# Boundary target construction
+# ------------------------------------------------------------
+
+boundary_target:
+  kernel_size: 3
+  construction: "fixed_3x3_boundary_operation"
+
+
+# ------------------------------------------------------------
+# Loss configuration
+# ------------------------------------------------------------
+
+loss:
+  lesion_segmentation:
+    weighted_bce:
+      enabled: true
+      positive_class_weight: 3.4832
+
+    soft_dice:
+      enabled: true
+      lesion_containing_training_images_only: true
+
+    weighted_bce_coefficient: 0.5
+    soft_dice_coefficient: 0.5
+
+  boundary_localization:
+    weighted_bce:
+      enabled: true
+      positive_class_weight: 5.6204
+
+    soft_dice:
+      enabled: true
+
+    weighted_bce_coefficient: 0.5
+    soft_dice_coefficient: 0.5
+
+  diagnosis:
+    lesion_presence:
+      enabled: true
+      class_weights:
+        absence: 2.8962
+        presence: 0.6043
+
+    conditional_malignancy:
+      enabled: true
+      lesion_containing_cases_only: true
+      class_weights:
+        benign: 0.7405
+        malignant: 1.5394
+
+    lesion_presence_coefficient: 0.5
+    conditional_malignancy_coefficient: 0.5
+
+  joint_objective:
+    segmentation_coefficient: 1.0
+    boundary_coefficient: 0.25
+    diagnosis_coefficient: 0.50
+
+
+# ------------------------------------------------------------
+# Development training
+# ------------------------------------------------------------
+
+development_training:
+  optimizer: "AdamW"
+
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+  batch_size: 16
+  maximum_epochs: 80
+
+  random_seed: 20260830
+
+  fold_specific_hyperparameter_search: false
+
+  deterministic_execution: true
+
+  cublas_workspace_config: ":4096:8"
+
+
+# ------------------------------------------------------------
+# Final full-development training
+# ------------------------------------------------------------
+
+final_training:
+  development_images: 614
+  development_groups: 547
+
+  epochs: 26
+  batch_size: 16
+
+  optimizer: "AdamW"
+  weight_decay: 0.0001
+
+  learning_rate_schedule:
+    - start_epoch: 1
+      end_epoch: 23
+      learning_rate: 0.001
+
+    - start_epoch: 24
+      end_epoch: 26
+      learning_rate: 0.0005
+
+  automatic_mixed_precision: true
+
+  separate_validation_partition: false
+  early_stopping: false
+
+  random_seed: 20260830
+
+
+# ------------------------------------------------------------
+# Internal BUSI protocol
+# ------------------------------------------------------------
+
+busi_protocol:
+  raw_images: 780
+
+  eligible_population:
+    images: 769
+    leakage_control_groups: 684
+
+  development:
+    images: 614
+    leakage_control_groups: 547
+
+  final_holdout:
+    images: 155
+    leakage_control_groups: 137
+    protected_during_development: true
+    one_time_evaluation: true
+
+  verified_patient_wise_split: false
+
+  leakage_control_note: >
+    Duplicate-aware leakage-control groups reduce duplicate-related
+    overlap but must not be interpreted as verified patient-level
+    separation.
+
+
+# ------------------------------------------------------------
+# Five-fold development protocol
+# ------------------------------------------------------------
+
+cross_validation:
+  folds: 5
+  grouping: "duplicate_aware_leakage_control_groups"
+
+  folds_configuration:
+    fold_1:
+      train_images: 386
+      validation_images: 103
+      evaluation_images: 125
+
+    fold_2:
+      train_images: 392
+      validation_images: 95
+      evaluation_images: 127
+
+    fold_3:
+      train_images: 395
+      validation_images: 97
+      evaluation_images: 122
+
+    fold_4:
+      train_images: 392
+      validation_images: 103
+      evaluation_images: 119
+
+    fold_5:
+      train_images: 395
+      validation_images: 98
+      evaluation_images: 121
+
+  selected_training_epochs:
+    fold_1: 35
+    fold_2: 16
+    fold_3: 25
+    fold_4: 34
+    fold_5: 26
+
+  final_epoch_selection_rule: "median_of_selected_fold_epochs"
+  final_selected_epochs: 26
+
+
+# ------------------------------------------------------------
+# Frozen decision rules
+# ------------------------------------------------------------
+
+decision_rules:
+  lesion_threshold: 0.5
+  boundary_threshold: 0.5
+  cancer_threshold: 0.5
+
+  three_class_prediction: "argmax"
+  class_order:
+    - "Normal"
+    - "Benign"
+    - "Malignant"
+
+  threshold_tuning_on_final_holdout: false
+  threshold_tuning_on_external_data: false
+
+
+# ------------------------------------------------------------
+# Explainability
+# ------------------------------------------------------------
+
+explainability:
+  method: "Grad-CAM"
+  target_branch: "native_neural_diagnostic_branch"
+
+  random_forest_in_explanation_pathway: false
+
+  localization_metrics:
+    - "lesion_energy_fraction"
+    - "pointing_game_accuracy"
+    - "saliency_contrast"
+    - "pixel_roc_auc"
+
+  faithfulness:
+    enabled: true
+    method: "deletion_based"
+    comparison: "Grad-CAM-selected deletion vs matched random deletion"
+
+  interpretation_scope:
+    causal_explanation: false
+    clinical_interpretability: false
+    expert_equivalence: false
+
+
+# ------------------------------------------------------------
+# External validation
+# ------------------------------------------------------------
+
+external_validation:
+  frozen_model: true
+
+  retraining: false
+  fine_tuning: false
+  calibration: false
+  threshold_optimization: false
+  test_time_augmentation: false
+  performance_based_case_filtering: false
+  dataset_specific_postprocessing: false
+
+  bootstrap:
+    replicates: 5000
+    confidence_level: 0.95
+    interval_type: "percentile"
+    random_seed: 20260830
+
+  breast:
+    dataset_name: "BrEaST"
+    total_images: 256
+    total_patients: 256
+    normal: 4
+    benign: 154
+    malignant: 98
+    lesion_subset: 252
+    bootstrap_unit: "case"
+
+  bus_uclm:
+    dataset_name: "BUS-UCLM"
+    version: 3
+    total_images: 683
+    normal: 419
+    benign: 174
+    malignant: 90
+
+    lesion_subset: 260
+    normal_subset: 419
+
+    dependency_groups: 37
+    bootstrap_unit: "dependency_group"
+
+    strict_bmode_subset:
+      images: 521
+      dependency_groups: 36
+
+    exact_deduplicated_subset:
+      images: 679
+      dependency_groups: 37
+
+
+# ------------------------------------------------------------
+# Runtime environment
+# ------------------------------------------------------------
+
+environment:
+  python: "3.10.20"
+  pytorch: "2.5.1+cu121"
+  torchvision: "0.20.1+cu121"
+  numpy: "2.2.6"
+  cuda: "12.1"
+  cudnn: "90100"
+
+  hardware:
+    gpu: "NVIDIA GeForce RTX 3060"
+    gpu_memory_gb: 12
+    system_ram_gb: 32
+
+
+# ------------------------------------------------------------
+# Reproducibility restrictions
+# ------------------------------------------------------------
+
+reproducibility:
+  final_holdout_for_model_selection: false
+  external_data_for_model_selection: false
+  external_data_for_hyperparameter_tuning: false
+  external_data_for_threshold_tuning: false
+
+  modify_protocol_after_holdout_access: false
+
+  notes:
+    - "Final BUSI holdout must remain isolated during model development."
+    - "External datasets must not be used for model selection."
+    - "No patient-wise BUSI separation claim is permitted."
+    - "Lightweight refers to parameter, storage, and MAC compactness."
+    - "Grad-CAM evidence must not be interpreted as causal or clinical explanation."
