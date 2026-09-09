@@ -1,0 +1,24 @@
+# LWNNet-BCD
+# Frozen R1 reproducibility environment
+# Python version used for the reported experiments: 3.10.20
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+numpy==2.2.6
+
+scikit-learn==1.7.2
+xgboost==3.2.0
+lightgbm==4.7.0
+catboost==1.2.10
+
+Important reproducibility note
+
+The reported environment also used:
+
+CUDA: 12.1
+cuDNN: 90100
+GPU: NVIDIA GeForce RTX 3060, 12 GB
+System RAM: 32 GB
+Python: 3.10.20
