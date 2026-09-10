@@ -1,7 +1,5 @@
 # LWNNet-BCD
 
-## An Explainable Lightweight Neural Network for Breast Cancer Detection in 2D Ultrasound Images Using Feature Mapping
-
 This repository provides the implementation and reproducibility materials for **LWNNet-BCD**, a compact multi-task neural framework for breast ultrasound analysis.
 
 LWNNet-BCD integrates:
